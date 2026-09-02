@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex, nofollow">
+<title>Darkroom</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<!-- Icon set. Drawn here once and referenced with <use>, so the page pulls
+     nothing from any network. -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.5 2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.9l6.1-.8z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></symbol>
+  <symbol id="i-drive" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h.01M11 15h6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 6.3"/><path d="M20 5v6h-6"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4"/><path d="M4 19h16"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2m-8 0 1 13h8l1-13"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4 4 3 3-2 4 3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M4 7h11a4 4 0 0 1 0 8H9"/><path d="m7 4-3 3 3 3"/><path d="m17 12 3 3-3 3"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5m0-8v.01"/></symbol>
+  <symbol id="i-cog" viewBox="0 0 24 24"><path d="M4 21v-6M4 11V3M12 21v-9M12 8V3M20 21v-4M20 13V3"/><path d="M1.5 15h5M9.5 8h5M17.5 17h5"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5z"/><path d="m14 7 3 3"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5 20 6v6c0 4.4-3.2 7.7-8 9-4.8-1.3-8-4.6-8-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+</svg>
+
+<!-- ============================ locked / setup ============================ -->
+<main id="gate" class="gate" hidden>
+  <div class="gate-inner">
+
+    <section id="gate-locked" class="gate-panel" hidden>
+      <div class="gate-icon"><svg><use href="#i-lock"/></svg></div>
+      <h1 id="gate-title">Library locked</h1>
+      <p id="gate-message" class="gate-message"></p>
+      <div class="gate-drive">
+        <svg><use href="#i-drive"/></svg>
+        <span id="gate-drive-label"></span>
+      </div>
+      <p class="gate-hint">
+        Plug the drive in and this unlocks on its own — normally within a few seconds.
+      </p>
+      <div class="gate-actions">
+        <button id="gate-recheck" class="btn">Check now</button>
+        <button id="gate-forget" class="btn btn-quiet">Use a different drive</button>
+      </div>
+    </section>
+
+    <section id="gate-setup" class="gate-panel gate-setup" hidden>
+      <div class="gate-icon"><svg><use href="#i-image"/></svg></div>
+      <h1>Set up your library</h1>
+      <p class="gate-message">
+        Pick a folder on your external drive. Everything lives there — the photos,
+        the thumbnails and the index. This computer only remembers which drive to
+        look for.
+      </p>
+
+      <div class="picker">
+        <div id="picker-shortcuts" class="picker-shortcuts"></div>
+        <div class="picker-path">
+          <button id="picker-up" class="btn btn-quiet btn-sm" title="Go up">Up</button>
+          <code id="picker-current"></code>
+        </div>
+        <ul id="picker-list" class="picker-list"></ul>
+      </div>
+
+      <label class="field">
+        <span>New folder name (optional)</span>
+        <input id="setup-folder" type="text" placeholder="Photos" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="field">
+        <span>What should we call this drive?</span>
+        <input id="setup-label" type="text" placeholder="Archive SSD" autocomplete="off">
+      </label>
+
+      <p id="setup-target" class="setup-target"></p>
+      <p id="setup-error" class="error" hidden></p>
+      <div class="gate-actions">
+        <button id="setup-create" class="btn btn-primary">Create library here</button>
+      </div>
+      <p class="gate-hint">
+        Choosing a folder that already holds a Darkroom library pairs with it instead
+        of creating a new one.
+      </p>
+    </section>
+
+  </div>
+</main>
+
+<!-- ================================= app ================================= -->
+<div id="app" class="app" hidden>
+
+  <aside class="sidebar">
+    <div class="brand">
+      <svg class="brand-mark"><use href="#i-image"/></svg>
+      <span>Darkroom</span>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item" data-view="all">
+        <svg><use href="#i-image"/></svg><span>All photos</span>
+        <em id="count-all"></em>
+      </button>
+      <button class="nav-item" data-view="favorites">
+        <svg><use href="#i-star"/></svg><span>Favorites</span>
+        <em id="count-fav"></em>
+      </button>
+    </nav>
+
+    <div class="sidebar-head">
+      <h2>Folders</h2>
+      <button id="new-folder" class="icon-btn" title="New folder">
+        <svg><use href="#i-plus"/></svg>
+      </button>
+    </div>
+    <div id="tree" class="tree"></div>
+
+    <div class="sidebar-foot">
+      <div id="drive-status" class="drive-status">
+        <svg><use href="#i-drive"/></svg>
+        <div>
+          <strong id="drive-name"></strong>
+          <small id="drive-space"></small>
+        </div>
+      </div>
+      <div class="sidebar-buttons">
+        <button id="btn-sync" class="btn btn-sm" title="Copy new photos in from your source folders">
+          <svg><use href="#i-sync"/></svg> Sync
+        </button>
+        <button id="btn-scan" class="btn btn-sm" title="Reconcile the index with the drive">
+          <svg><use href="#i-refresh"/></svg> Scan
+        </button>
+        <button id="btn-settings" class="icon-btn" title="Settings">
+          <svg><use href="#i-cog"/></svg>
+        </button>
+      </div>
+      <div id="job-bar" class="job-bar" hidden>
+        <div class="job-line">
+          <span id="job-label"></span>
+          <button id="job-cancel" class="link-btn">cancel</button>
+        </div>
+        <div class="job-track"><div id="job-fill" class="job-fill"></div></div>
+        <small id="job-detail"></small>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="toolbar">
+      <div id="crumbs" class="crumbs"></div>
+      <div class="toolbar-right">
+        <label class="search">
+          <svg><use href="#i-search"/></svg>
+          <input id="search" type="search" placeholder="Search filenames and captions" autocomplete="off">
+        </label>
+        <select id="sort" class="select" title="Sort order">
+          <option value="taken_desc">Newest first</option>
+          <option value="taken_asc">Oldest first</option>
+          <option value="name_asc">Name A–Z</option>
+          <option value="name_desc">Name Z–A</option>
+          <option value="added_desc">Recently added</option>
+        </select>
+        <input id="zoom" class="zoom" type="range" min="120" max="360" step="20" value="200" title="Thumbnail size">
+      </div>
+    </header>
+
+    <div id="folder-note" class="folder-note" hidden></div>
+
+    <div id="scroller" class="scroller">
+      <section id="subfolders" class="subfolders" hidden></section>
+      <section id="grid" class="grid"></section>
+      <div id="sentinel" class="sentinel"></div>
+      <p id="empty" class="empty" hidden></p>
+    </div>
+  </main>
+</div>
+
+<!-- =============================== lightbox =============================== -->
+<div id="lightbox" class="lightbox" hidden>
+  <button id="lb-close" class="lb-close icon-btn" title="Close (Esc)"><svg><use href="#i-close"/></svg></button>
+  <button id="lb-prev" class="lb-nav lb-prev" title="Previous (←)"><svg><use href="#i-chevron"/></svg></button>
+  <button id="lb-next" class="lb-nav lb-next" title="Next (→)"><svg><use href="#i-chevron"/></svg></button>
+
+  <figure class="lb-stage">
+    <img id="lb-image" alt="">
+    <div id="lb-unsupported" class="lb-unsupported" hidden>
+      <svg><use href="#i-image"/></svg>
+      <p>This file cannot be shown here.</p>
+      <small id="lb-unsupported-note"></small>
+    </div>
+  </figure>
+
+  <aside id="lb-panel" class="lb-panel">
+    <h3 id="lb-name"></h3>
+    <label class="field">
+      <span>Title</span>
+      <input id="lb-title" type="text" placeholder="Untitled" autocomplete="off">
+    </label>
+    <label class="field">
+      <span>Caption</span>
+      <textarea id="lb-caption" rows="3" placeholder="Say something about this one"></textarea>
+    </label>
+    <dl id="lb-meta" class="meta"></dl>
+    <div class="lb-buttons">
+      <button id="lb-fav" class="btn btn-sm"><svg><use href="#i-star"/></svg> Favorite</button>
+      <button id="lb-cover" class="btn btn-sm"><svg><use href="#i-folder"/></svg> Set as folder cover</button>
+      <a id="lb-download" class="btn btn-sm" download><svg><use href="#i-download"/></svg> Download</a>
+      <button id="lb-delete" class="btn btn-sm btn-danger"><svg><use href="#i-trash"/></svg> Move to trash</button>
+    </div>
+  </aside>
+</div>
+
+<!-- =============================== settings =============================== -->
+<dialog id="settings" class="dialog">
+  <form method="dialog" class="dialog-head">
+    <h2>Settings</h2>
+    <button class="icon-btn" value="close" title="Close"><svg><use href="#i-close"/></svg></button>
+  </form>
+
+  <div class="dialog-body">
+    <section>
+      <h3>Sync sources</h3>
+      <p class="muted">
+        Folders on this computer to copy photos in from. Darkroom only ever reads
+        them — nothing in a source folder is moved, renamed or deleted.
+      </p>
+      <ul id="sources" class="sources"></ul>
+      <div class="source-add">
+        <input id="source-path" type="text" placeholder="/home/you/Pictures" autocomplete="off" spellcheck="false">
+        <select id="source-organize" class="select">
+          <option value="date">Sort into folders by date</option>
+          <option value="mirror">Keep the source folder layout</option>
+          <option value="flat">All into one folder</option>
+        </select>
+        <input id="source-into" type="text" placeholder="Imported" autocomplete="off">
+        <button id="source-add" class="btn btn-sm">Add</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>Drive</h3>
+      <label class="check">
+        <input id="scan-on-unlock" type="checkbox">
+        <span>Re-index automatically when the drive is plugged in</span>
+      </label>
+      <p class="muted" id="cache-info"></p>
+      <div class="row">
+        <button id="btn-verify" class="btn btn-sm"><svg><use href="#i-shield"/></svg> Verify every file</button>
+        <button id="btn-thumbs" class="btn btn-sm"><svg><use href="#i-image"/></svg> Build all thumbnails</button>
+        <button id="btn-clear-cache" class="btn btn-sm">Clear thumbnail cache</button>
+      </div>
+      <div class="row">
+        <button id="btn-forget" class="btn btn-sm btn-danger">Unpair this drive</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>Where things live</h3>
+      <dl class="meta">
+        <dt>Library</dt><dd id="info-path"></dd>
+        <dt>On this computer</dt><dd>Only the pairing: which drive to look for, and where it was last seen.</dd>
+      </dl>
+      <p class="muted">
+        Photos, thumbnails and the index all sit on the drive. Unplug it and there
+        is nothing here to look at.
+      </p>
+    </section>
+
+    <section id="job-report-wrap" hidden>
+      <h3>Last result</h3>
+      <pre id="job-report" class="report"></pre>
+    </section>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>

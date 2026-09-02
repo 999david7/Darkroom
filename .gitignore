@@ -1,0 +1,14 @@
+node_modules/
+npm-debug.log*
+*.tgz
+
+# Local config and any library that ends up inside a checkout by accident.
+.darkroom/
+.darkroom-library.json
+config.json
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
