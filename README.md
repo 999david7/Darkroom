@@ -203,11 +203,28 @@ src/
 ├── thumbs.js    rendering and caching
 ├── server.js    HTTP, and the lock that gates all of it
 └── cli.js
-public/          the interface: three files, no build step, no framework
+public/
+├── index.html   markup and the inline SVG icon set
+├── styles.css   the whole theme, driven by tokens at the top of the file
+├── app.js       views, grid, lightbox, polling
+└── ui.js        DOM helpers, dialogs, formatting
 ```
 
-There is no bundler and no transpiler. Edit a file in `public/`, reload the
-page.
+There is no bundler, no transpiler and no framework. Edit a file in `public/`,
+reload the page.
+
+The interface is deliberately monochrome and typographic: paper ground,
+hairline rules, uppercase letterspaced monospace for every piece of chrome,
+light display type for anything that is actual content. Colour is reserved —
+gold marks a favourite, red marks a destructive action, and nothing else is
+tinted, so photographs are the only saturated thing on screen.
+
+Every colour, rule weight and dimension is a custom property in `:root` at the
+top of `styles.css`; restyling means editing that block, not hunting through
+rules. Type comes from system font stacks because the page must not fetch
+anything over the network — if you want the display face to look closer to a
+designed specimen, drop a `.woff2` into `public/`, add an `@font-face` block,
+and point `--sans` at it. That stays entirely offline.
 
 ## License
 

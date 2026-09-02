@@ -2,6 +2,9 @@ import {
   $, askText, clear, confirmAction, debounce, el, formatBytes, formatDate, icon, plural, toast,
 } from './ui.js';
 
+/** Chrome labels are uppercase everywhere; do it in one place. */
+const caps = (value) => String(value).toUpperCase();
+
 /* Darkroom client.
    One page, three states: setting up, locked, and browsing. The server is the
    authority on which — a poll of /api/status decides what is on screen, so the
@@ -114,13 +117,25 @@ async function refreshStatus() {
 }
 
 function renderDriveStatus(status) {
-  $('#drive-name').textContent = status.volume?.label ?? 'Library';
-  const space = status.volume?.free
-    ? `${formatBytes(status.volume.free)} free of ${formatBytes(status.volume.total)}`
-    : status.volume?.path ?? '';
-  $('#drive-space').textContent = space;
+  $('#drive-name').textContent = caps(status.volume?.label ?? 'Library');
+  $('#drive-space').textContent = status.volume?.free
+    ? `${formatBytes(status.volume.free)} FREE`
+    : '';
   $('#count-all').textContent = status.library ? status.library.count.toLocaleString() : '';
   $('#count-fav').textContent = status.library?.favorites ? status.library.favorites.toLocaleString() : '';
+
+  const stats = clear($('#lib-stats'));
+  if (!status.library) return;
+  const rows = [
+    plural(status.library.count, 'photo'),
+    plural(status.library.folders, 'folder'),
+    formatBytes(status.library.bytes),
+    status.library.unsupported ? `${status.library.unsupported} undecodable` : null,
+    status.library.missing ? `${status.library.missing} missing` : null,
+  ];
+  for (const row of rows) {
+    if (row) stats.append(el('p', { class: 'dash-row' }, el('span', { class: 'v', text: row })));
+  }
 }
 
 // ---------------------------------------------------------------- folder tree
@@ -146,7 +161,7 @@ function renderTree() {
   if (!state.tree) return;
   for (const child of state.tree.children) host.append(treeRow(child));
   if (state.tree.children.length === 0) {
-    host.append(el('p', { class: 'muted', text: 'No folders yet. Make one with the + above.' }));
+    host.append(el('p', { class: 'tree-empty', text: 'No folders yet. Make one with the + above.' }));
   }
 }
 
@@ -219,7 +234,7 @@ function renderCrumbs() {
 
   if (q) {
     // The results span the library, so a folder path here would be a lie.
-    host.append(el('span', { class: 'crumb-last', text: `Results for “${q}”` }));
+    host.append(el('span', { class: 'crumb-last', text: `Results — ${q}` }));
   } else if (mode === 'favorites') {
     host.append(el('span', { class: 'crumb-last', text: 'Favorites' }));
   } else if (mode === 'all' || folder === '') {
@@ -240,7 +255,7 @@ function renderCrumbs() {
       );
     });
     host.append(
-      el('button', { class: 'icon-btn', title: 'Rename this folder', onClick: renameCurrentFolder }, icon('i-pencil')),
+      el('button', { class: 'icon-btn icon-btn--sm', title: 'Rename this folder', onClick: renameCurrentFolder }, icon('i-pencil')),
     );
   }
 
@@ -433,8 +448,8 @@ function renderSubfolders() {
           el('strong', { text: child.name }),
           el('small', {
             text: child.count
-              ? `${plural(child.count, 'photo')}${child.children.length ? ` · ${plural(child.children.length, 'folder')}` : ''}`
-              : 'Empty',
+              ? caps(`${plural(child.count, 'photo')}${child.children.length ? ` · ${plural(child.children.length, 'folder')}` : ''}`)
+              : 'EMPTY',
           }),
         ),
       ),
@@ -485,7 +500,18 @@ async function renderLightbox() {
     image.removeAttribute('src');
   }
 
-  $('#lb-name').textContent = photo.filename;
+  // The headline carries the title when there is one; the filename is chrome.
+  $('#lb-name').textContent = photo.title || photo.filename;
+  $('#lb-where').textContent = [
+    photo.folder_path || 'Library root',
+    formatDate(photo.taken_at),
+  ].filter(Boolean).join('  ·  ');
+
+  $('#lb-ext').textContent = photo.ext.replace('.', '') || 'FILE';
+  const stateChip = $('#lb-state');
+  stateChip.textContent = photo.favorite ? 'FAVORITE' : opaque ? 'NOT DECODABLE' : 'ORIGINAL';
+  stateChip.classList.toggle('chip-dot--gold', Boolean(photo.favorite));
+
   $('#lb-title').value = photo.title ?? '';
   $('#lb-caption').value = photo.caption ?? '';
   $('#lb-fav').classList.toggle('on', Boolean(photo.favorite));
@@ -495,16 +521,18 @@ async function renderLightbox() {
 
   const meta = clear($('#lb-meta'));
   const rows = [
-    ['Folder', photo.folder_path || 'Library root'],
-    ['Taken', formatDate(photo.taken_at)],
-    ['Size', photo.width && photo.height ? `${photo.width} × ${photo.height}` : null],
-    ['File', formatBytes(photo.size)],
+    // Only worth a row when the headline is showing a title instead.
+    ['File', photo.title ? photo.filename : null],
+    ['Dimensions', photo.width && photo.height ? `${photo.width} × ${photo.height}` : null],
+    ['Weight', formatBytes(photo.size)],
     ['Camera', photo.camera],
     ['Lens', photo.lens],
   ];
-  for (const [label, value] of rows) {
+  for (const [key, value] of rows) {
     if (!value) continue;
-    meta.append(el('dt', { text: label }), el('dd', { text: value }));
+    meta.append(
+      el('div', { class: 'dash-row' }, el('span', { class: 'k', text: key }), el('span', { class: 'v', text: value })),
+    );
   }
 
   // Warm the next image so arrowing through feels instant.
@@ -536,16 +564,25 @@ async function patchPhoto(changes) {
 
 // ---------------------------------------------------------------------- jobs
 
+/**
+ * A running job takes over the middle of the bottom bar and draws a hairline
+ * of progress along its top edge.
+ */
 function renderJob(job) {
   const bar = $('#job-bar');
+  const zoom = $('#zoom-wrap');
   if (!job) {
     bar.hidden = true;
+    zoom.hidden = false;
+    $('#job-fill').style.setProperty('width', '0');
     return;
   }
   bar.hidden = false;
+  zoom.hidden = true;
+
   const { phase, processed, total } = job.progress ?? {};
-  $('#job-label').textContent = `${job.type}: ${phase ?? 'working'}`;
-  $('#job-detail').textContent = total ? `${processed} of ${total}` : `${processed ?? 0}`;
+  $('#job-label').textContent = caps(`${job.type} — ${phase ?? 'working'}`);
+  $('#job-detail').textContent = total ? `${processed} / ${total}` : `${processed ?? 0}`;
   const pct = total ? Math.min(100, Math.round((processed / total) * 100)) : 4;
   $('#job-fill').style.setProperty('width', `${pct}%`);
   $('#job-cancel').onclick = () => attempt(() => api(`/api/jobs/${job.id}/cancel`, { method: 'POST' }));
@@ -630,7 +667,7 @@ async function openSettings() {
 function renderSources(sources) {
   const host = clear($('#sources'));
   if (sources.length === 0) {
-    host.append(el('li', { class: 'muted', text: 'No source folders yet.' }));
+    host.append(el('li', { class: 'sources-empty' }, el('span', { class: 'muted', text: 'No source folders yet.' })));
     return;
   }
   sources.forEach((source, index) => {
@@ -743,12 +780,22 @@ async function createLibrary() {
 // ------------------------------------------------------------------- wiring
 
 function wire() {
-  // Sidebar and toolbar.
-  for (const button of document.querySelectorAll('.nav-item')) {
+  // The ALL / FAVORITES capsule.
+  const segments = [...document.querySelectorAll('.segment')];
+  for (const button of segments) {
     button.addEventListener('click', () => {
-      for (const other of document.querySelectorAll('.nav-item')) other.setAttribute('aria-current', 'false');
-      button.setAttribute('aria-current', 'true');
+      for (const other of segments) other.classList.toggle('is-on', other === button);
       setView(button.dataset.view);
+    });
+  }
+
+  // The numbered sort strip.
+  const strip = [...document.querySelectorAll('.strip-item')];
+  for (const button of strip) {
+    button.addEventListener('click', () => {
+      for (const other of strip) other.classList.toggle('is-on', other === button);
+      state.view = { ...state.view, sort: button.dataset.sort };
+      resetGrid();
     });
   }
 
@@ -756,11 +803,6 @@ function wire() {
     state.view = { ...state.view, q: event.target.value.trim() };
     resetGrid();
   }, 220));
-
-  $('#sort').addEventListener('change', (event) => {
-    state.view = { ...state.view, sort: event.target.value };
-    resetGrid();
-  });
 
   $('#zoom').addEventListener('input', (event) => {
     document.documentElement.style.setProperty('--tile', `${event.target.value}px`);
@@ -842,6 +884,9 @@ function wire() {
 
   // Lightbox.
   $('#lb-close').addEventListener('click', closeLightbox);
+  for (const target of document.querySelectorAll('[data-close]')) {
+    target.addEventListener('click', closeLightbox);
+  }
   $('#lb-prev').addEventListener('click', () => step(-1));
   $('#lb-next').addEventListener('click', () => step(1));
   $('#lb-fav').addEventListener('click', () =>

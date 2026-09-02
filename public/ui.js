@@ -114,17 +114,17 @@ export function askText({ title, label, value = '', placeholder = '', multiline 
         class: 'dialog-body',
         onSubmit: (event) => { event.preventDefault(); done(input.value); },
       },
-      el('label', { class: 'field' }, el('span', { text: label }), input),
+      el('label', { class: 'field' }, el('span', { class: 'label', text: label }), input),
       el(
         'div',
         { class: 'row' },
-        el('button', { class: 'btn btn-primary', type: 'submit', text: confirm }),
-        el('button', { class: 'btn btn-quiet', type: 'button', text: 'Cancel', onClick: () => done(null) }),
+        el('button', { class: 'btn', type: 'submit', text: confirm.toUpperCase() }),
+        el('button', { class: 'btn btn-quiet', type: 'button', text: 'CANCEL', onClick: () => done(null) }),
       ),
     );
 
     dialog.append(
-      el('div', { class: 'dialog-head' }, el('h2', { text: title })),
+      el('div', { class: 'dialog-head' }, el('h2', { class: 'label', text: title })),
       form,
     );
     queueMicrotask(() => { input.focus(); input.select?.(); });
@@ -135,7 +135,7 @@ export function askText({ title, label, value = '', placeholder = '', multiline 
 export function confirmAction({ title, body, confirm = 'Continue', danger = false }) {
   return modal((dialog, done) => {
     dialog.append(
-      el('div', { class: 'dialog-head' }, el('h2', { text: title })),
+      el('div', { class: 'dialog-head' }, el('h2', { class: 'label', text: title })),
       el(
         'div',
         { class: 'dialog-body' },
@@ -144,11 +144,11 @@ export function confirmAction({ title, body, confirm = 'Continue', danger = fals
           'div',
           { class: 'row' },
           el('button', {
-            class: `btn ${danger ? 'btn-danger' : 'btn-primary'}`,
-            text: confirm,
+            class: `btn ${danger ? 'btn-danger' : ''}`,
+            text: confirm.toUpperCase(),
             onClick: () => done(true),
           }),
-          el('button', { class: 'btn btn-quiet', text: 'Cancel', onClick: () => done(false) }),
+          el('button', { class: 'btn btn-quiet', text: 'CANCEL', onClick: () => done(false) }),
         ),
       ),
     );
