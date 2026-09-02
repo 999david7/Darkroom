@@ -1,5 +1,5 @@
 import {
-  $, askText, clear, confirmAction, debounce, el, formatBytes, formatDate, icon, plural, toast,
+  $, askFields, askText, clear, confirmAction, debounce, el, formatBytes, formatDate, icon, plural, toast,
 } from './ui.js';
 
 /** Chrome labels are uppercase everywhere; do it in one place. */
@@ -16,7 +16,8 @@ const PAGE = 120;
 const state = {
   status: null,
   tree: null,
-  view: { mode: 'folder', folder: '', q: '', sort: 'taken_desc' },
+  // Opens on the whole library, which is what the lit ALL segment claims.
+  view: { mode: 'all', folder: '', q: '', sort: 'taken_desc' },
   items: [],
   total: 0,
   loading: false,
@@ -206,6 +207,9 @@ function treeRow(node) {
 function openFolder(path) {
   state.view = { ...state.view, mode: 'folder', folder: path, q: '' };
   $('#search').value = '';
+  // Browsing a folder is neither ALL nor FAVORITES; leaving a segment lit
+  // would have the capsule claiming something the grid is not showing.
+  for (const segment of document.querySelectorAll('.segment')) segment.classList.remove('is-on');
   for (const part of ancestry(path)) state.expanded.add(part);
   renderTree();
   resetGrid();
@@ -255,63 +259,47 @@ function renderCrumbs() {
       );
     });
     host.append(
-      el('button', { class: 'icon-btn icon-btn--sm', title: 'Rename this folder', onClick: renameCurrentFolder }, icon('i-pencil')),
+      el('button', { class: 'icon-btn icon-btn--sm', title: 'Edit this folder', onClick: editFolder }, icon('i-pencil')),
     );
   }
 
   if (state.total) host.append(el('span', { class: 'crumb-count', text: plural(state.total, 'photo') }));
 
-  const node = mode === 'folder' ? findNode(state.tree, folder) : null;
-  const note = $('#folder-note');
-  clear(note);
-  if (node && mode === 'folder') {
-    note.hidden = false;
-    note.append(
-      node.description
-        ? el('span', { text: node.description })
-        : el('span', { class: 'muted', text: 'No description yet.' }),
-      ' ',
-      el('button', {
-        class: 'link-btn',
-        text: node.description ? 'edit' : 'add one',
-        onClick: () => editDescription(folder, node.description ?? ''),
-      }),
-    );
-  } else {
-    note.hidden = true;
-  }
+  // The band carries a description when there is one. An empty band inviting
+  // you to write one would sit on every folder in the library forever.
+  const node = mode === 'folder' && !q ? findNode(state.tree, folder) : null;
+  const note = clear($('#folder-note'));
+  note.hidden = !node?.description;
+  if (node?.description) note.append(el('span', { text: node.description }));
 }
 
-async function renameCurrentFolder() {
+/** Name and description are one decision about a folder, so one dialog. */
+async function editFolder() {
   const path = state.view.folder;
   const node = findNode(state.tree, path);
-  const name = await askText({
-    title: 'Rename folder',
-    label: 'This renames the folder on the drive too',
-    value: node?.name ?? '',
-  });
-  if (name === null || !name.trim()) return;
+  if (!node) return;
 
-  await attempt(async () => {
-    const { folder } = await api('/api/folders', { method: 'PATCH', body: { path, name } });
-    await loadTree();
-    openFolder(folder.rel_path);
-    toast('Folder renamed');
+  const result = await askFields({
+    title: 'Edit folder',
+    confirm: 'Save',
+    fields: [
+      { name: 'name', label: 'Name — renames the folder on the drive too', value: node.name },
+      { name: 'description', label: 'Description', value: node.description ?? '', multiline: true, placeholder: 'What is in here?' },
+    ],
   });
-}
+  if (!result) return;
 
-async function editDescription(path, current) {
-  const description = await askText({
-    title: 'Folder description',
-    label: 'Shown at the top of the folder',
-    value: current,
-    multiline: true,
-  });
-  if (description === null) return;
-  await attempt(async () => {
-    await api('/api/folders', { method: 'PATCH', body: { path, description } });
+  const name = result.name.trim();
+  if (!name) return toast('A folder needs a name', 'bad');
+
+  return attempt(async () => {
+    const body = { path, description: result.description };
+    if (name !== node.name) body.name = name;
+    const { folder } = await api('/api/folders', { method: 'PATCH', body });
     await loadTree();
-    renderCrumbs();
+    if (folder.rel_path !== path) openFolder(folder.rel_path);
+    else renderCrumbs();
+    toast('Folder updated');
   });
 }
 
@@ -364,13 +352,7 @@ async function loadMore() {
     if (page.items.length < page.limit || state.items.length >= page.total) state.exhausted = true;
 
     renderCrumbs();
-    const nothing = state.items.length === 0;
-    $('#empty').hidden = !nothing;
-    if (nothing) {
-      $('#empty').textContent = state.view.q
-        ? `Nothing matches “${state.view.q}”.`
-        : 'No photos here yet. Use Sync to copy some in, or drop files into the folder on the drive and hit Scan.';
-    }
+    renderEmpty();
   } catch (err) {
     if (!(err instanceof ApiError) || err.status !== 423) toast(err.message, 'bad');
     state.exhausted = true;
@@ -379,10 +361,18 @@ async function loadMore() {
   }
 }
 
+/** Aspect ratio for the justified grid, clamped so one odd file cannot own a row. */
+function aspectOf(photo) {
+  if (!photo.width || !photo.height) return 1;
+  return Math.min(Math.max(photo.width / photo.height, 0.45), 2.6);
+}
+
 function tile(photo) {
   const button = el('button', {
     class: 'tile',
     title: photo.title || photo.filename,
+    'aria-label': photo.title || photo.filename,
+    style: { '--ar': String(aspectOf(photo)) },
     onClick: () => openLightbox(state.items.indexOf(photo)),
   });
 
@@ -413,9 +403,34 @@ function tile(photo) {
   return button;
 }
 
+function renderEmpty() {
+  const host = $('#empty');
+  // A folder holding only subfolders is not empty, and saying so while their
+  // covers sit right above the message reads as a bug.
+  const empty = state.items.length === 0 && $('#subfolders').hidden;
+  host.hidden = !empty;
+  if (!empty) return;
+
+  clear(host);
+  const [heading, body] = state.view.q
+    ? ['No matches', `Nothing in the library matches “${state.view.q}”.`]
+    : state.view.mode === 'favorites'
+      ? ['No favorites yet', 'Open a photo and press F, or use the favorite button in the panel.']
+      : ['Nothing here yet', 'Copy photos in with Sync, or drop files straight into this folder on the drive and press Scan.'];
+
+  host.append(
+    el('p', { class: 'label', text: heading }),
+    el('span', { class: 'rule' }),
+    el('p', { text: body }),
+  );
+}
+
 function renderSubfolders() {
   const host = clear($('#subfolders'));
-  const node = state.view.mode === 'folder' && !state.view.q ? findNode(state.tree, state.view.folder) : null;
+  // Folders belong above the photos when you are browsing structure. In the
+  // favorites view they would be noise, and a search spans everything.
+  const browsing = (state.view.mode === 'folder' || state.view.mode === 'all') && !state.view.q;
+  const node = browsing ? findNode(state.tree, state.view.folder) : null;
   const children = node?.children ?? [];
   host.hidden = children.length === 0;
 
@@ -459,6 +474,9 @@ function renderSubfolders() {
 
 // ------------------------------------------------------------------ lightbox
 
+/** Guards against a slow preview landing after you have stepped past it. */
+let swapToken = 0;
+
 function openLightbox(index) {
   if (index < 0 || index >= state.items.length) return;
   state.lightbox = index;
@@ -493,11 +511,26 @@ async function renderLightbox() {
   image.hidden = opaque;
   $('#lb-unsupported').hidden = !opaque;
   $('#lb-unsupported-note').textContent = photo.filename;
-  if (!opaque) {
-    image.src = `/api/photos/${photo.id}/preview`;
-    image.alt = photo.title || photo.filename;
-  } else {
+
+  if (opaque) {
     image.removeAttribute('src');
+  } else {
+    const url = `/api/photos/${photo.id}/preview`;
+    image.alt = photo.title || photo.filename;
+    if (image.getAttribute('src') !== url) {
+      // Decode the next frame before swapping. Assigning src directly blanks
+      // the stage while it loads, which makes arrowing through a folder flash
+      // white on every step.
+      const token = ++swapToken;
+      image.classList.add('swapping');
+      const staged = new Image();
+      staged.src = url;
+      staged.decode().catch(() => {}).then(() => {
+        if (token !== swapToken) return; // Already moved on to another photo.
+        image.src = url;
+        image.classList.remove('swapping');
+      });
+    }
   }
 
   // The headline carries the title when there is one; the filename is chrome.
@@ -805,8 +838,20 @@ function wire() {
   }, 220));
 
   $('#zoom').addEventListener('input', (event) => {
-    document.documentElement.style.setProperty('--tile', `${event.target.value}px`);
+    document.documentElement.style.setProperty('--row-h', `${event.target.value}px`);
   });
+
+  // The toolbar only grows its rule once content is scrolling beneath it.
+  const scroller = $('#scroller');
+  let queued = false;
+  scroller.addEventListener('scroll', () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      document.querySelector('.toolbar').classList.toggle('is-stuck', scroller.scrollTop > 4);
+      queued = false;
+    });
+  }, { passive: true });
 
   $('#new-folder').addEventListener('click', async () => {
     const name = await askText({

@@ -21,7 +21,9 @@
   --panel-w:    392px;
   --topbar-h:   56px;
   --bottom-h:   52px;
-  --tile:       200px;
+  /* Height of one row in the justified grid; the size slider drives it. */
+  --row-h:      190px;
+  --grid-gap:   8px;
 
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -55,6 +57,18 @@ svg {
 
 ::selection { background: var(--ink); color: var(--paper); }
 :focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+
+/* Default scrollbars are far too heavy next to hairline rules. */
+* { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border: 3px solid var(--paper);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* ------------------------------------------------------------- type system */
 
@@ -429,8 +443,15 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
   color: var(--ink-2);
 }
 .tree-row:hover { background: var(--paper-3); color: var(--ink); }
-.tree-row[aria-current="true"] { background: var(--ink); color: var(--paper); }
-.tree-row[aria-current="true"] .tree-count { color: var(--ink-4); }
+/* Selection in a list wants a marker, not the inversion the segmented
+   controls use — a whole black row is too much weight for a tree. */
+.tree-row[aria-current="true"] {
+  background: var(--paper-3);
+  color: var(--ink);
+  box-shadow: inset 2px 0 0 var(--ink);
+}
+.tree-row[aria-current="true"] .tree-label { font-weight: 500; }
+.tree-row[aria-current="true"] .tree-count { color: var(--ink-3); }
 
 .tree-twist {
   display: grid;
@@ -529,7 +550,11 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
   gap: 18px;
   padding: 14px 24px 14px;
   flex: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 140ms;
 }
+/* The rule only appears once photos are actually passing underneath it. */
+.toolbar.is-stuck { border-bottom-color: var(--rule); }
 
 .crumbs { display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: wrap; }
 .crumbs button {
@@ -575,19 +600,6 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
   font-size: 13px;
   background: var(--paper-2);
 }
-.folder-note .link-btn {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: var(--ink-3);
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  text-decoration: underline;
-  cursor: pointer;
-}
-.folder-note .link-btn:hover { color: var(--ink); }
 
 .scroller { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 60px; }
 
@@ -662,23 +674,33 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
 
 /* -------------------------------------------------------------------- grid */
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr));
-  gap: 10px;
-}
+/*
+ * Justified rows rather than a square grid.
+ *
+ * Each tile is one row tall and as wide as its aspect ratio makes it, then
+ * grows proportionally to fill out the row. Cropping ends up at a few percent
+ * instead of the centre-crop a square grid forces on every portrait — which
+ * matters when the entire point of the app is looking at photographs.
+ *
+ * `--ar` comes from the indexed dimensions. The ::after absorbs the slack in
+ * the final row so it keeps its natural scale instead of stretching.
+ */
+.grid { display: flex; flex-wrap: wrap; gap: var(--grid-gap); }
+.grid::after { content: ""; flex-grow: 999999; }
 
 .tile {
   position: relative;
-  aspect-ratio: 1;
-  border: 1px solid var(--rule-soft);
+  height: var(--row-h);
+  flex-grow: var(--ar, 1);
+  flex-basis: calc(var(--ar, 1) * var(--row-h));
+  min-width: 0;
+  border: 0;
   padding: 0;
   border-radius: var(--radius);
   background: var(--paper-3);
   overflow: hidden;
   cursor: pointer;
   display: block;
-  transition: border-color 120ms;
 }
 .tile img {
   width: 100%;
@@ -686,10 +708,22 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
   object-fit: cover;
   display: block;
   opacity: 0;
-  transition: opacity 220ms;
+  transition: opacity 260ms ease-out;
 }
 .tile img.loaded { opacity: 1; }
-.tile:hover { border-color: var(--ink); }
+
+/* Hairline drawn over the photo so pale images still have an edge. */
+.tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(14, 14, 14, .09);
+  pointer-events: none;
+  transition: box-shadow 120ms;
+}
+.tile:hover::after { box-shadow: inset 0 0 0 2px var(--ink); }
+.tile:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
 
 .tile-fav {
   position: absolute;
@@ -720,7 +754,19 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
 }
 
 .sentinel { height: 1px; }
-.empty { text-align: center; color: var(--ink-4); padding: 70px 20px; font-size: 13px; max-width: 46ch; margin: 0 auto; }
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 84px 20px;
+  max-width: 44ch;
+  margin: 0 auto;
+  text-align: center;
+}
+.empty .label { color: var(--ink-3); }
+.empty p { margin: 0; color: var(--ink-3); font-size: 13px; line-height: 1.6; }
+.empty .rule { width: 28px; height: 1px; background: var(--rule); margin: 4px 0; }
 
 /* --------------------------------------------------------------- bottom bar */
 
@@ -770,12 +816,39 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
 .strip-item.is-on em { color: var(--ink-4); }
 
 .bottom-mid { display: flex; justify-content: center; min-width: 0; }
-.zoom-wrap { display: flex; align-items: center; gap: 12px; }
+.zoom-wrap { display: flex; align-items: center; gap: 14px; }
+
+/* A hairline track with a small open handle, to match everything else. */
 .zoom {
-  width: 180px;
-  accent-color: var(--ink);
+  -webkit-appearance: none;
+  appearance: none;
+  width: 190px;
+  height: 18px;
+  background: transparent;
   cursor: pointer;
 }
+.zoom::-webkit-slider-runnable-track { height: 1px; background: var(--rule); }
+.zoom::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -5px;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  transition: background 120ms;
+}
+.zoom:hover::-webkit-slider-thumb { background: var(--ink); }
+.zoom::-moz-range-track { height: 1px; background: var(--rule); }
+.zoom::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+}
+.zoom:hover::-moz-range-thumb { background: var(--ink); }
 
 .job-bar { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .job-bar #job-detail {
@@ -809,16 +882,24 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
   z-index: 40;
   display: grid;
   grid-template-columns: 1fr var(--panel-w);
+  /* Without an explicit row the implicit one is auto-sized, so a tall photo
+     stretches the grid past the viewport and gets clipped at the bottom. */
+  grid-template-rows: minmax(0, 1fr);
   background: var(--paper);
+  animation: lb-in 170ms ease-out;
 }
+@keyframes lb-in { from { opacity: 0 } to { opacity: 1 } }
 .lb-backdrop { position: absolute; inset: 0; }
 
 .lb-stage {
   position: relative;
   margin: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   padding: 46px 68px;
   background: var(--paper-3);
   border-right: 1px solid var(--rule);
@@ -826,10 +907,14 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
 .lb-stage img {
   max-width: 100%;
   max-height: 100%;
+  width: auto;
+  height: auto;
   object-fit: contain;
   background: var(--paper);
-  box-shadow: 0 2px 24px rgba(0, 0, 0, .1);
+  box-shadow: 0 1px 2px rgba(14, 14, 14, .09), 0 10px 34px rgba(14, 14, 14, .07);
+  transition: opacity 140ms ease-out;
 }
+.lb-stage img.swapping { opacity: .35; }
 .lb-unsupported { text-align: center; color: var(--ink-4); }
 .lb-unsupported svg { width: 34px; height: 34px; margin-bottom: 14px; }
 .lb-unsupported .label { color: var(--ink-3); }
@@ -867,7 +952,10 @@ input::placeholder, textarea::placeholder { color: var(--ink-4); }
 .lb-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .lb-panel .display { margin-top: 20px; }
 .lb-panel .panel-section:last-of-type { border-bottom: 0; }
-.lb-panel .action { margin-top: 26px; }
+/* The primary action stays at the foot of the panel however short the
+   metadata is, so it is always in the same place. */
+.lb-panel .action { margin-top: auto; padding-top: 16px; }
+.lb-panel > .panel-section:last-of-type { margin-bottom: 26px; }
 .lb-buttons { display: grid; gap: 7px; margin-top: 12px; }
 .lb-buttons .btn { justify-content: flex-start; }
 

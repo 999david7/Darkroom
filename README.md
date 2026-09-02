@@ -221,7 +221,10 @@ tinted, so photographs are the only saturated thing on screen.
 
 Every colour, rule weight and dimension is a custom property in `:root` at the
 top of `styles.css`; restyling means editing that block, not hunting through
-rules. Type comes from system font stacks because the page must not fetch
+rules. The photo grid is justified rather than square — each tile is one row
+tall and grows in proportion to its aspect ratio, which comes from the indexed
+dimensions as a `--ar` custom property, so portraits stay portraits instead of
+being centre-cropped. It needs no layout JavaScript and no resize observer. Type comes from system font stacks because the page must not fetch
 anything over the network — if you want the display face to look closer to a
 designed specimen, drop a `.woff2` into `public/`, add an `@font-face` block,
 and point `--sans` at it. That stays entirely offline.

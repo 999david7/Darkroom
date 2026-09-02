@@ -131,6 +131,51 @@ export function askText({ title, label, value = '', placeholder = '', multiline 
   });
 }
 
+/**
+ * Ask for several fields at once. Resolves an object keyed by field name, or
+ * null when dismissed. Used where two edits belong to one decision — renaming
+ * a folder and describing it, say — so they are one dialog rather than two.
+ */
+export function askFields({ title, fields, confirm = 'Save' }) {
+  return modal((dialog, done) => {
+    const inputs = new Map();
+    const grid = el('div', { class: 'field-grid' });
+
+    for (const field of fields) {
+      const input = field.multiline
+        ? el('textarea', { rows: 4, placeholder: field.placeholder ?? '', value: field.value ?? '' })
+        : el('input', { type: 'text', placeholder: field.placeholder ?? '', value: field.value ?? '', autocomplete: 'off' });
+      inputs.set(field.name, input);
+      grid.append(el('label', { class: 'field' }, el('span', { class: 'label', text: field.label }), input));
+    }
+
+    const form = el(
+      'form',
+      {
+        class: 'dialog-body',
+        onSubmit: (event) => {
+          event.preventDefault();
+          done(Object.fromEntries([...inputs].map(([name, input]) => [name, input.value])));
+        },
+      },
+      grid,
+      el(
+        'div',
+        { class: 'row' },
+        el('button', { class: 'btn', type: 'submit', text: confirm.toUpperCase() }),
+        el('button', { class: 'btn btn-quiet', type: 'button', text: 'CANCEL', onClick: () => done(null) }),
+      ),
+    );
+
+    dialog.append(el('div', { class: 'dialog-head' }, el('h2', { class: 'label', text: title })), form);
+    queueMicrotask(() => {
+      const first = [...inputs.values()][0];
+      first?.focus();
+      first?.select?.();
+    });
+  });
+}
+
 /** Yes/no. Resolves true only on an explicit confirmation. */
 export function confirmAction({ title, body, confirm = 'Continue', danger = false }) {
   return modal((dialog, done) => {
