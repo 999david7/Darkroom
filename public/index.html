@@ -147,9 +147,9 @@
 
     <main class="main">
       <div class="filterbar">
-        <nav class="segments" id="segments">
-          <button class="segment is-on" data-view="all"><span>ALL</span><em id="count-all"></em></button>
-          <button class="segment" data-view="favorites"><span>FAVORITES</span><em id="count-fav"></em></button>
+        <nav class="segments" id="segments" aria-label="Library filter">
+          <button class="segment is-on" data-view="all" aria-pressed="true"><span>ALL</span><em id="count-all"></em></button>
+          <button class="segment" data-view="favorites" aria-pressed="false"><span>FAVORITES</span><em id="count-fav"></em></button>
         </nav>
       </div>
 
@@ -176,10 +176,10 @@
     <div id="job-fill" class="job-fill"></div>
 
     <div class="strip" id="sort-strip" role="group" aria-label="Sort order">
-      <button class="strip-item is-on" data-sort="taken_desc"><em>01</em><span>NEWEST</span></button>
-      <button class="strip-item" data-sort="taken_asc"><em>02</em><span>OLDEST</span></button>
-      <button class="strip-item" data-sort="name_asc"><em>03</em><span>NAME</span></button>
-      <button class="strip-item" data-sort="added_desc"><em>04</em><span>ADDED</span></button>
+      <button class="strip-item is-on" data-sort="taken_desc" aria-pressed="true"><em>01</em><span>NEWEST</span></button>
+      <button class="strip-item" data-sort="taken_asc" aria-pressed="false"><em>02</em><span>OLDEST</span></button>
+      <button class="strip-item" data-sort="name_asc" aria-pressed="false"><em>03</em><span>NAME</span></button>
+      <button class="strip-item" data-sort="added_desc" aria-pressed="false"><em>04</em><span>ADDED</span></button>
     </div>
 
     <div class="bottom-mid">
@@ -205,7 +205,7 @@
 </div>
 
 <!-- =============================== lightbox =============================== -->
-<div id="lightbox" class="lightbox" hidden>
+<div id="lightbox" class="lightbox" hidden role="dialog" aria-modal="true" aria-labelledby="lb-name">
   <div class="lb-backdrop" data-close></div>
 
   <figure class="lb-stage">
@@ -238,15 +238,15 @@
     </section>
 
     <section class="panel-section">
-      <h3 class="label">Title</h3>
+      <label id="lb-title-label" class="label" for="lb-title">Title</label>
       <input id="lb-title" type="text" placeholder="Untitled" autocomplete="off">
-      <h3 class="label label--spaced">Caption</h3>
+      <label id="lb-caption-label" class="label label--spaced" for="lb-caption">Caption</label>
       <textarea id="lb-caption" rows="3" placeholder="Say something about this one"></textarea>
     </section>
 
     <section class="panel-section">
       <div class="lb-buttons">
-        <button id="lb-fav" class="btn btn-sm"><svg><use href="#i-star"/></svg>FAVORITE</button>
+        <button id="lb-fav" class="btn btn-sm" aria-pressed="false"><svg><use href="#i-star"/></svg>FAVORITE</button>
         <button id="lb-cover" class="btn btn-sm"><svg><use href="#i-folder"/></svg>SET AS COVER</button>
         <button id="lb-delete" class="btn btn-sm btn-danger"><svg><use href="#i-trash"/></svg>MOVE TO TRASH</button>
       </div>
@@ -321,7 +321,7 @@
   </div>
 </dialog>
 
-<div id="toast" class="toast" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script src="/app.js" type="module"></script>
 </body>

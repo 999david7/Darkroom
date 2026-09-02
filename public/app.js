@@ -88,7 +88,13 @@ async function refreshStatus() {
   $('#gate-setup').hidden = !setup;
   $('#gate-locked').hidden = setup || !locked;
   $('#app').hidden = setup || locked;
-  if (locked || setup) closeLightbox();
+  if (locked || setup) {
+    closeLightbox();
+    // A <dialog> opened with showModal() sits in the browser's top layer, so
+    // hiding #app leaves it on screen — still showing the library path after
+    // the drive is gone. Close it explicitly.
+    if ($('#settings').open) $('#settings').close();
+  }
 
   if (setup && state.browsePath === null) browseTo(null);
 
@@ -209,7 +215,10 @@ function openFolder(path) {
   $('#search').value = '';
   // Browsing a folder is neither ALL nor FAVORITES; leaving a segment lit
   // would have the capsule claiming something the grid is not showing.
-  for (const segment of document.querySelectorAll('.segment')) segment.classList.remove('is-on');
+  for (const segment of document.querySelectorAll('.segment')) {
+    segment.classList.remove('is-on');
+    segment.setAttribute('aria-pressed', 'false');
+  }
   for (const part of ancestry(path)) state.expanded.add(part);
   renderTree();
   resetGrid();
@@ -258,12 +267,22 @@ function renderCrumbs() {
           : el('button', { text: part, onClick: () => openFolder(at) }),
       );
     });
-    host.append(
-      el('button', { class: 'icon-btn icon-btn--sm', title: 'Edit this folder', onClick: editFolder }, icon('i-pencil')),
-    );
   }
 
   if (state.total) host.append(el('span', { class: 'crumb-count', text: plural(state.total, 'photo') }));
+
+  // The edit affordance trails the whole line rather than splitting the folder
+  // name from its count.
+  if (mode === 'folder' && folder !== '' && !q) {
+    host.append(
+      el('button', {
+        class: 'icon-btn icon-btn--sm',
+        title: 'Edit this folder',
+        'aria-label': 'Edit this folder',
+        onClick: editFolder,
+      }, icon('i-pencil')),
+    );
+  }
 
   // The band carries a description when there is one. An empty band inviting
   // you to write one would sit on every folder in the library forever.
@@ -479,16 +498,49 @@ let swapToken = 0;
 
 function openLightbox(index) {
   if (index < 0 || index >= state.items.length) return;
+  const opening = $('#lightbox').hidden;
   state.lightbox = index;
   $('#lightbox').hidden = false;
   renderLightbox();
+  if (opening) {
+    // Remember where the keyboard was so closing can put it back on the tile
+    // you opened, rather than dumping focus at the top of the document.
+    state.returnFocus = document.activeElement;
+    $('#lb-close').focus();
+  }
 }
 
 function closeLightbox() {
   if ($('#lightbox').hidden) return;
   $('#lightbox').hidden = true;
   $('#lb-image').removeAttribute('src');
+  const index = state.lightbox;
   state.lightbox = -1;
+
+  const tileNode = $('#grid').children[index];
+  const target = document.contains(state.returnFocus) ? state.returnFocus : tileNode;
+  state.returnFocus = null;
+  if (target?.focus) target.focus();
+}
+
+/** Keep Tab inside the lightbox while it is up; it is a modal surface. */
+function trapFocus(event) {
+  if (event.key !== 'Tab') return;
+  const box = $('#lightbox');
+  const focusable = [...box.querySelectorAll('button, a[href], input, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((node) => !node.disabled && node.offsetParent !== null);
+  if (focusable.length === 0) return;
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+  if (event.shiftKey && (active === first || !box.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 async function step(delta) {
@@ -533,21 +585,10 @@ async function renderLightbox() {
     }
   }
 
-  // The headline carries the title when there is one; the filename is chrome.
-  $('#lb-name').textContent = photo.title || photo.filename;
-  $('#lb-where').textContent = [
-    photo.folder_path || 'Library root',
-    formatDate(photo.taken_at),
-  ].filter(Boolean).join('  ·  ');
-
-  $('#lb-ext').textContent = photo.ext.replace('.', '') || 'FILE';
-  const stateChip = $('#lb-state');
-  stateChip.textContent = photo.favorite ? 'FAVORITE' : opaque ? 'NOT DECODABLE' : 'ORIGINAL';
-  stateChip.classList.toggle('chip-dot--gold', Boolean(photo.favorite));
+  renderPhotoIdentity(photo, opaque);
 
   $('#lb-title').value = photo.title ?? '';
   $('#lb-caption').value = photo.caption ?? '';
-  $('#lb-fav').classList.toggle('on', Boolean(photo.favorite));
   $('#lb-download').href = `/api/photos/${photo.id}/original?download=1`;
   $('#lb-download').setAttribute('download', photo.filename);
   $('#lb-cover').title = `Use as the cover for ${coverTarget(photo) || 'the library root'}`;
@@ -573,6 +614,37 @@ async function renderLightbox() {
   if (next && next.thumb_state !== 'unsupported') new Image().src = `/api/photos/${next.id}/preview`;
 }
 
+/**
+ * The parts of the panel that change when you edit a photo, split out from the
+ * full render so saving a caption cannot reset the field you are typing into.
+ */
+function renderPhotoIdentity(photo, opaque = photo.thumb_state === 'unsupported') {
+  // The headline carries the title when there is one; the filename is chrome.
+  $('#lb-name').textContent = photo.title || photo.filename;
+
+  const position = state.total
+    ? `${String(state.lightbox + 1).padStart(2, '0')} / ${state.total}`
+    : '';
+  $('#lb-where').textContent = [
+    position,
+    photo.folder_path || 'Library root',
+    formatDate(photo.taken_at),
+  ].filter(Boolean).join('  ·  ');
+
+  $('#lb-ext').textContent = photo.ext.replace('.', '') || 'FILE';
+
+  // Only say something when there is something to say. "ORIGINAL" on every
+  // photo was a label that carried no information.
+  const stateChip = $('#lb-state');
+  const flag = photo.favorite ? 'FAVORITE' : opaque ? 'NOT DECODABLE' : '';
+  stateChip.textContent = flag;
+  stateChip.hidden = !flag;
+  stateChip.classList.toggle('chip-dot--gold', Boolean(photo.favorite));
+
+  $('#lb-fav').classList.toggle('on', Boolean(photo.favorite));
+  $('#lb-fav').setAttribute('aria-pressed', String(Boolean(photo.favorite)));
+}
+
 /** Which folder a "set as cover" applies to: the one you are looking at. */
 function coverTarget(photo) {
   const { mode, folder } = state.view;
@@ -581,18 +653,35 @@ function coverTarget(photo) {
   return inside ? folder : photo.folder_path;
 }
 
-async function patchPhoto(changes) {
+/**
+ * Save an edit and reflect it without re-rendering the panel — the inputs are
+ * where you are typing, and rewriting their values mid-keystroke moves the
+ * caret to the end.
+ */
+async function patchPhoto(changes, { flag = null } = {}) {
   const photo = state.items[state.lightbox];
   if (!photo) return;
+  const index = state.lightbox;
+
   await attempt(async () => {
     const { photo: updated } = await api(`/api/photos/${photo.id}`, { method: 'PATCH', body: changes });
     Object.assign(photo, updated);
-    renderLightbox();
+    if (state.lightbox === index) renderPhotoIdentity(photo);
+
     // Keep the grid tile in step with the panel.
-    const tiles = $('#grid').children;
-    const node = tiles[state.lightbox];
+    const node = $('#grid').children[index];
     if (node) node.replaceWith(tile(photo));
+    if (flag) markSaved(flag);
   });
+}
+
+/** A quiet "saved" on the field's own label, instead of a toast per keystroke. */
+let savedTimer = null;
+function markSaved(label) {
+  for (const node of document.querySelectorAll('.label.is-saved')) node.classList.remove('is-saved');
+  label.classList.add('is-saved');
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => label.classList.remove('is-saved'), 1600);
 }
 
 // ---------------------------------------------------------------------- jobs
@@ -813,11 +902,20 @@ async function createLibrary() {
 // ------------------------------------------------------------------- wiring
 
 function wire() {
+  /** Mutually exclusive buttons: one visual state, one announced state. */
+  const exclusive = (nodes, chosen) => {
+    for (const node of nodes) {
+      const on = node === chosen;
+      node.classList.toggle('is-on', on);
+      node.setAttribute('aria-pressed', String(on));
+    }
+  };
+
   // The ALL / FAVORITES capsule.
   const segments = [...document.querySelectorAll('.segment')];
   for (const button of segments) {
     button.addEventListener('click', () => {
-      for (const other of segments) other.classList.toggle('is-on', other === button);
+      exclusive(segments, button);
       setView(button.dataset.view);
     });
   }
@@ -826,7 +924,7 @@ function wire() {
   const strip = [...document.querySelectorAll('.strip-item')];
   for (const button of strip) {
     button.addEventListener('click', () => {
-      for (const other of strip) other.classList.toggle('is-on', other === button);
+      exclusive(strip, button);
       state.view = { ...state.view, sort: button.dataset.sort };
       resetGrid();
     });
@@ -936,8 +1034,16 @@ function wire() {
   $('#lb-next').addEventListener('click', () => step(1));
   $('#lb-fav').addEventListener('click', () =>
     patchPhoto({ favorite: !state.items[state.lightbox]?.favorite }));
-  $('#lb-title').addEventListener('change', (event) => patchPhoto({ title: event.target.value }));
-  $('#lb-caption').addEventListener('change', (event) => patchPhoto({ caption: event.target.value }));
+  // Save as you type. Waiting for blur meant clicking away from a half-typed
+  // caption and never knowing whether it stuck.
+  const liveField = (field, labelId, key) => {
+    const label = $(labelId);
+    const save = debounce((value) => patchPhoto({ [key]: value }, { flag: label }), 650);
+    field.addEventListener('input', (event) => save(event.target.value));
+    field.addEventListener('change', (event) => patchPhoto({ [key]: event.target.value }, { flag: label }));
+  };
+  liveField($('#lb-title'), '#lb-title-label', 'title');
+  liveField($('#lb-caption'), '#lb-caption-label', 'caption');
 
   $('#lb-cover').addEventListener('click', async () => {
     const photo = state.items[state.lightbox];
@@ -975,9 +1081,24 @@ function wire() {
   });
 
   document.addEventListener('keydown', (event) => {
-    if ($('#lightbox').hidden) return;
     const typing = ['INPUT', 'TEXTAREA'].includes(event.target.tagName);
+
+    if ($('#lightbox').hidden) {
+      // "/" jumps to search, the way it does everywhere else.
+      if (event.key === '/' && !typing && !$('#settings').open) {
+        event.preventDefault();
+        $('#search').focus();
+        $('#search').select();
+      } else if (event.key === 'Escape' && event.target === $('#search') && $('#search').value) {
+        $('#search').value = '';
+        state.view = { ...state.view, q: '' };
+        resetGrid();
+      }
+      return;
+    }
+
     if (event.key === 'Escape') return closeLightbox();
+    trapFocus(event);
     if (typing) return;
     if (event.key === 'ArrowLeft') step(-1);
     else if (event.key === 'ArrowRight') step(1);
