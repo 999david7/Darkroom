@@ -71,6 +71,17 @@ Then start it:
 npm start          # → http://127.0.0.1:4600
 ```
 
+Or use the start script for your system, which checks your Node version,
+installs dependencies on first run, and starts the server:
+
+| System | Script |
+| --- | --- |
+| macOS | double-click `start.command` in Finder |
+| Windows | double-click `start.bat` |
+| Linux | `./start.sh` |
+
+Extra arguments go to `serve`, e.g. `./start.sh --port 4700`.
+
 You can also do the whole setup in the browser: run `npm start` first and the
 page walks you through picking a folder, with shortcuts to wherever your system
 mounts removable drives.
